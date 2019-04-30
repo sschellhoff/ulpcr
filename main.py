@@ -25,13 +25,13 @@ def main():
         receiver = ImageReceiver(serial_connection, WIDTH, HEIGHT)
         is_running = True
         while is_running:
-            command = input("Type any key to stop the program")
-            if command == "quit" or command == "QUIT" or command == "Quit" or command == "q" or command == "Q":
+            command = input("Command: ")
+            if command.lower() == "quit" or command.lower() == "q":
                 is_running = False
             else:
                 command_words = command.split(" ")
                 if command_words[0] == "WRITE" and is_integer(command_words[1]) and is_integer(command_words[2]):
-                    serial.send(command + "\n")
+                    serial_connection.write(bytes(command+"\n", "ascii"))
                 else:
                     print("please use \"WRITE NUMBER NUMBER\" as command")
         receiver.stop()
@@ -100,6 +100,8 @@ def get_data_from_serial_connection(serial_connection, size, stoppable_thread=No
         current_byte = serial_connection.read(1)
         current_timestamp = time.time()
         if current_timestamp - last_timestamp > .500: # if there was a break, reset image
+            if bytecnt:
+                print(outbuffer[0:min(bytecnt, 100)])
             bytecnt = 0
         last_timestamp = current_timestamp
         outbuffer[bytecnt] = current_byte[0]
@@ -135,7 +137,7 @@ def is_integer(string):
     try:
         int(string)
         return True
-    except ValueError
+    except ValueError:
         return False
 
 if __name__ == '__main__':
