@@ -23,7 +23,17 @@ sample_data = bytes([255, 255, 100, 200, 100, 200, 50, 50, 50, 50, 50, 50, 10, 8
 def main():
     with serial.Serial('COM44', 115200) as serial_connection:
         receiver = ImageReceiver(serial_connection, WIDTH, HEIGHT)
-        input("Type any key to stop the program")
+        is_running = True
+        while is_running:
+            command = input("Type any key to stop the program")
+            if command == "quit" or command == "QUIT" or command == "Quit" or command == "q" or command == "Q":
+                is_running = False
+            else:
+                command_words = command.split(" ")
+                if command_words[0] == "WRITE" and is_integer(command_words[1]) and is_integer(command_words[2]):
+                    serial.send(command + "\n")
+                else:
+                    print("please use \"WRITE NUMBER NUMBER\" as command")
         receiver.stop()
         receiver.join()
 """
@@ -120,6 +130,13 @@ def create_image_from_binary(data, width):
             pixel_color = (color_r, color_g, color_b)
             pixels[x,y] = pixel_color
     return image
+
+def is_integer(string):
+    try:
+        int(string)
+        return True
+    except ValueError
+        return False
 
 if __name__ == '__main__':
     main()
