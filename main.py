@@ -6,6 +6,7 @@ from queue import Queue
 
 # Only required for easier image handling / updating, e.g. inline images in ipython
 import matplotlib.pyplot as plt
+import matplotlib.image
 import numpy
 
 WIDTH = 320
@@ -23,7 +24,7 @@ sample_data = bytes([255, 255, 100, 200, 100, 200, 50, 50, 50, 50, 50, 50, 10, 8
                      100, 200, 100, 200, 100, 200, 50, 50, 50, 50, 50, 50, 10, 80, 10, 80, 50, 90, 200, 200, 200, 200, 200, 200])
 
 def main():
-    with serial.Serial('COM44', 115200) as serial_connection:
+    with serial.Serial('COM44', 115200, timeout=0) as serial_connection:
         receiver = ImageReceiver(serial_connection, WIDTH, HEIGHT)
         transmitter = CommandTransmitter(serial_connection, receiver)
         is_running = True
@@ -116,15 +117,29 @@ class ImageReceiver(StoppableThread):
     def run(self):
         while not self.stopped():
             data = get_data_from_serial_connection(self.serial_connection, self.width*self.height*2, self)
-            image = create_image_from_binary(data, self.width, self.height, rgb565, 2)
-            #image = create_image_from_binary(sample_data, 12)
-            # Use one of the following two options
-            # a) Show with matplotlib which can display inline graphics in ipython or has a qt frontend
-            plt.imshow(numpy.asarray(image))
-            plt.show()
-            print()
-            # b) Use the default Pillow approach to call an external application
-            #image.show()
+            if not data:
+                continue
+            cmd = data[0:3]
+            if cmd == b'IMG':
+                image = create_image_from_binary(data[3:], self.width, self.height, grayscale, 1)
+                #image = create_image_from_binary(sample_data, 12)
+                # Use one of the following two options
+                # a) Show with matplotlib which can display inline graphics in ipython or has a qt frontend
+                plt.imshow(numpy.asarray(image))
+                plt.show()
+                print()
+                # b) Use the default Pillow approach to call an external application
+                #image.show()
+            elif cmd == b'JPG':
+                save_jpeg_image(data[3:])
+                img = matplotlib.image.imread('uC-image.jpg')
+                plt.imshow(img, cmap='gray')
+                plt.show()
+                print()
+            elif cmd == b'ACK':
+                print('ACK from uC:', data[3:])
+            else:
+                print('Unrecognized data from the uC:', data[:10])
 
 class CommandTransmitter(StoppableThread):
     def __init__(self, serial_connection, image_receiver):
@@ -140,37 +155,38 @@ class CommandTransmitter(StoppableThread):
     def run(self):
         while not self.stopped():
             # Wait until there is a 2 seconds break after receiving
-            if time.time() - self.image_receiver.last_rx < 2:
-                time.sleep(.1) # Limit CPU load
+            if time.time() - self.image_receiver.last_rx < .5:
+                time.sleep(.2) # Limit CPU load
                 continue
             # Then, until the queue is empty, pop commands and transmit them
             while not self.commands.empty():
                 command = self.commands.get()
                 self.serial_connection.write(command)
 
-def get_data_from_serial_connection(serial_connection, size, image_receiver=None):
+def get_data_from_serial_connection(serial_connection, maxsize, image_receiver=None):
     # Not very nice, but working: We read the whole image byte by byte and reset
     # the image input whenever we encounter a break of more than .5 seconds
     # between two input bytes. As the uC is making breaks between two images,
     # this synchronizes image reception.
-    outbuffer = bytearray(size)
+    outbuffer = bytearray(maxsize)
     bytecnt = 0
     last_timestamp = 0
-    while bytecnt < size and (image_receiver == None or not image_receiver.stopped()): # this could end up in an infinite loop if misconfigured
+    while image_receiver == None or not image_receiver.stopped(): # this could end up in an infinite loop if misconfigured
+        if time.time() - last_timestamp > .500 and bytecnt: # if there was a break, reset image
+            return bytes(outbuffer)[:bytecnt]
         current_byte = serial_connection.read(1)
-        image_receiver.last_rx = time.time()
-        current_timestamp = time.time()
-        if current_timestamp - last_timestamp > .500: # if there was a break, reset image
-            if bytecnt:
-                print(outbuffer[0:min(bytecnt, 100)])
-            bytecnt = 0
-        last_timestamp = current_timestamp
+        if not current_byte:
+            time.sleep(.2)
+            continue
+        last_timestamp = time.time()
+        if image_receiver:
+            image_receiver.last_rx = time.time()
         outbuffer[bytecnt] = current_byte[0]
         bytecnt += 1
-        if bytecnt % 1000 == 0: # For debugging: Show the current progress
-            print('\r            \r', round(bytecnt / size * 100), '%', end='')
-    data = bytes(outbuffer)
-    return data
+        if bytecnt % 1024 == 0: # For debugging: Show the current progress
+            print('\r            \r', round(bytecnt / 1024), 'kB', end='')
+        if bytecnt >= maxsize:
+            return bytes(outbuffer)
 
 def create_image_from_binary(data, width, height, bytes_to_pixel_func, bytes_per_pixel):
     image = Image.new("RGB", (width, height), color='white')
@@ -188,9 +204,14 @@ def create_image_from_binary(data, width, height, bytes_to_pixel_func, bytes_per
             # incremented.
             # Therefore, we have to add column-index * bytes-per-pixel to the
             # beginning of a line.
-            first_index = row * 2 * width + col * bytes_per_pixel
+            first_index = row * width * 2 + col * bytes_per_pixel
             pixels[col,row] = bytes_to_pixel_func(data[first_index:first_index+bytes_per_pixel])
     return image
+
+def save_jpeg_image(data):
+    with open('uC-image.jpg', 'wb') as file:
+        file.write(data)
+        print('File saved with', len(data) / 1024, 'kB.')
 
 def rgb565(two_bytes):
     combined_bytes = (two_bytes[0] << 8) + two_bytes[1]
@@ -208,6 +229,9 @@ def raw_bw(byte):
 def yuv(two_bytes):
     value = two_bytes[1]
     return (value, value, value)
+def grayscale(byte):
+    val = byte[0]
+    return (val, val, val)
 
 def dec_hex(string):
     try:
