@@ -24,7 +24,7 @@ sample_data = bytes([255, 255, 100, 200, 100, 200, 50, 50, 50, 50, 50, 50, 10, 8
                      100, 200, 100, 200, 100, 200, 50, 50, 50, 50, 50, 50, 10, 80, 10, 80, 50, 90, 200, 200, 200, 200, 200, 200])
 
 def main():
-    with serial.Serial('COM44', 115200, timeout=0) as serial_connection:
+    with serial.Serial('COM3', 115200, timeout=0) as serial_connection:
         receiver = ImageReceiver(serial_connection, WIDTH, HEIGHT)
         transmitter = CommandTransmitter(serial_connection, receiver)
         is_running = True
@@ -132,10 +132,13 @@ class ImageReceiver(StoppableThread):
                 #image.show()
             elif cmd == b'JPG':
                 save_jpeg_image(data[3:])
-                img = matplotlib.image.imread('uC-image.jpg')
-                plt.imshow(img, cmap='gray')
-                plt.show()
-                print()
+                try:
+                    img = matplotlib.image.imread('uC-image.jpg')
+                    plt.imshow(img, cmap='gray')
+                    plt.show()
+                    print()
+                except TypeError:
+                    print('TypeError when converting image to float.')
             elif cmd == b'ACK':
                 print('ACK from uC:', data[3:])
             else:
