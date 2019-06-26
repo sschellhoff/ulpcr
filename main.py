@@ -116,33 +116,41 @@ class ImageReceiver(StoppableThread):
 
     def run(self):
         while not self.stopped():
-            data = get_data_from_serial_connection(self.serial_connection, self.width*self.height*2, self)
-            if not data:
-                continue
-            cmd = data[0:3]
-            if cmd == b'IMG':
-                image = create_image_from_binary(data[3:], self.width, self.height, grayscale, 1)
-                #image = create_image_from_binary(sample_data, 12)
-                # Use one of the following two options
-                # a) Show with matplotlib which can display inline graphics in ipython or has a qt frontend
-                plt.imshow(numpy.asarray(image))
-                plt.show()
-                print()
-                # b) Use the default Pillow approach to call an external application
-                #image.show()
-            elif cmd == b'JPG':
-                save_jpeg_image(data[3:])
-                try:
-                    img = matplotlib.image.imread('uC-image.jpg')
-                    plt.imshow(img, cmap='gray')
+            try:
+                data = get_data_from_serial_connection(self.serial_connection, self.width*self.height*2, self)
+                if not data:
+                    continue
+                cmd = data[0:3]
+                if cmd == b'IMG':
+                    with open('data.txt', 'wb') as datafile:
+                        datafile.write(data[3:])
+                    image = create_image_from_binary(data[3:], self.width, self.height, grayscale, 1)
+                    #image = create_image_from_binary(sample_data, 12)
+                    # Use one of the following two options
+                    # a) Show with matplotlib which can display inline graphics in ipython or has a qt frontend
+                    plt.imshow(numpy.asarray(image))
                     plt.show()
                     print()
-                except TypeError:
-                    print('TypeError when converting image to float.')
-            elif cmd == b'ACK':
-                print('ACK from uC:', data[3:])
-            else:
-                print('Unrecognized data from the uC:', data[:10])
+                    # b) Use the default Pillow approach to call an external application
+                    #image.show()
+                elif cmd == b'JPG':
+                    save_jpeg_image(data[3:])
+                    try:
+                        img = matplotlib.image.imread('uC-image.jpg')
+                        plt.imshow(img, cmap='gray')
+                        plt.show()
+                        print()
+                    except TypeError:
+                        print('TypeError when converting image to float.')
+                elif cmd == b'ACK':
+                    print('ACK from uC:', data[3:])
+                elif cmd == b'LOG':
+                    print('LOGGER: ', data[3:])
+                else:
+                    print('Unrecognized data from the uC:', data[:10])
+            except Exception as e:
+                print('Exception in ImageReceiver:', e.__doc__
+                      )
 
 class CommandTransmitter(StoppableThread):
     def __init__(self, serial_connection, image_receiver):
@@ -207,7 +215,7 @@ def create_image_from_binary(data, width, height, bytes_to_pixel_func, bytes_per
             # incremented.
             # Therefore, we have to add column-index * bytes-per-pixel to the
             # beginning of a line.
-            first_index = row * width * 2 + col * bytes_per_pixel
+            first_index = row * width * bytes_per_pixel + col * bytes_per_pixel
             pixels[col,row] = bytes_to_pixel_func(data[first_index:first_index+bytes_per_pixel])
     return image
 
@@ -247,4 +255,5 @@ def dec_hex(string):
 if __name__ == '__main__':
     #data, image = single_image()
     main()
+    #create_image_from_binary(data, 320, 240, grayscale, 1)
     pass
