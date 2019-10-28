@@ -147,10 +147,9 @@ class ImageReceiver(StoppableThread):
                 elif cmd == b'LOG':
                     print('LOGGER: ', data[3:])
                 else:
-                    print('Unrecognized data from the uC:', data[:10])
+                    print('Unrecognized data from the uC:', data[:60])
             except Exception as e:
-                print('Exception in ImageReceiver:', e.__doc__
-                      )
+                print('Exception in ImageReceiver:', e.__doc__)
 
 class CommandTransmitter(StoppableThread):
     def __init__(self, serial_connection, image_receiver):
