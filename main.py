@@ -160,7 +160,7 @@ class ImageReceiver(StoppableThread):
             except Exception as e:
                 print('Exception in ImageReceiver:', e.__doc__)
 
-class CommandTransmitter(StoppableThread):
+class CommandTransmitter(threading.Thread):
     def __init__(self, serial_connection, image_receiver):
         super().__init__()
         self.serial_connection = serial_connection
@@ -171,16 +171,25 @@ class CommandTransmitter(StoppableThread):
     def append(self, command):
         self.commands.put(command)
     
+    def stop(self):
+        self.commands.put(None)
+    
     def run(self):
-        while not self.stopped():
+        while True:
+            command = self.commands.get()
+            if command == None:
+                break
+            self.serial_connection.write(command)
+            """
             # Wait until there is a 2 seconds break after receiving
             if time.time() - self.image_receiver.last_rx < .5:
-                time.sleep(.2) # Limit CPU load
+                time.sleep(5) # Limit CPU load
                 continue
             # Then, until the queue is empty, pop commands and transmit them
             while not self.commands.empty():
                 command = self.commands.get()
                 self.serial_connection.write(command)
+            """
 
 def get_data_from_serial_connection(serial_connection, maxsize, image_receiver=None):
     # Not very nice, but working: We read the whole image byte by byte and reset
@@ -195,7 +204,7 @@ def get_data_from_serial_connection(serial_connection, maxsize, image_receiver=N
             return bytes(outbuffer)[:bytecnt]
         current_byte = serial_connection.read(1)
         if not current_byte:
-            time.sleep(.2)
+            time.sleep(.3)
             continue
         last_timestamp = time.time()
         if image_receiver:
