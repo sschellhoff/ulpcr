@@ -9,6 +9,11 @@ import matplotlib.pyplot as plt
 import matplotlib.image
 import numpy
 
+
+#SERIAL_PORT = 'COM12' # Tag-Connect ST-Link
+SERIAL_PORT = 'COM19' # nucleo-f401re
+
+
 WIDTH = 320
 HEIGHT = 240
 
@@ -24,7 +29,7 @@ sample_data = bytes([255, 255, 100, 200, 100, 200, 50, 50, 50, 50, 50, 50, 10, 8
                      100, 200, 100, 200, 100, 200, 50, 50, 50, 50, 50, 50, 10, 80, 10, 80, 50, 90, 200, 200, 200, 200, 200, 200])
 
 def main():
-    with serial.Serial('COM3', 115200, timeout=0) as serial_connection:
+    with serial.Serial(SERIAL_PORT, 115200, timeout=0) as serial_connection:
         receiver = ImageReceiver(serial_connection, WIDTH, HEIGHT)
         transmitter = CommandTransmitter(serial_connection, receiver)
         is_running = True
@@ -33,9 +38,9 @@ def main():
             if command.lower() == "quit" or command.lower() == "q":
                 is_running = False
             else:
-                command_words = command.split(" ")
-                if command_words[0] == "WRITE":
+                if command.startswith("WRITE "):
                     try:
+                        command_words = command.split(" ")
                         address = dec_hex(command_words[1])
                         value = dec_hex(command_words[2])
                         # Currently, the board is only able to receive commands when
@@ -47,15 +52,19 @@ def main():
                         transmitter.append(bytes("WRITE "+str(address)+" "+str(value)+"\n", "ascii"))
                     except ValueError:
                         print("Invalid number given.")
+                elif command.startswith("brightness="):
+                    transmitter.append(bytes(command + "\n", "utf-8")) # if there is some non-ascii, at least don't crash here
+                elif command.startswith("quality="):
+                    transmitter.append(bytes(command + "\n", "utf-8"))
                 else:
-                    print("please use \"WRITE NUMBER NUMBER\" as command")
+                    print("please use \"WRITE NUMBER NUMBER\" or another valid command")
         receiver.stop()
         transmitter.stop()
         receiver.join()
         transmitter.join()
 
 def single_command(command):
-    with serial.Serial('COM44', 115200) as serial_connection:
+    with serial.Serial(SERIAL_PORT, 115200) as serial_connection:
         # Wait for the end of a transmission. Currently, the uC can not receive
         # anything while transmitting.
         print('Waiting for an image transmission break ...')
@@ -77,7 +86,7 @@ def single_command(command):
         print()
     
 def single_image():
-    with serial.Serial('COM44', 115200) as serial_connection:
+    with serial.Serial(SERIAL_PORT, 115200) as serial_connection:
         data = get_data_from_serial_connection(serial_connection, WIDTH*HEIGHT*2)
         image = create_image_from_binary(data, WIDTH, HEIGHT, rgb565, 2)
         #image = create_image_from_binary(sample_data, 12)
